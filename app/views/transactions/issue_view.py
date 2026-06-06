@@ -348,6 +348,16 @@ class IssueView(QWidget):
                 ]
 
             self._asset_panel.set_items(assets, row)
+
+            # Show empty-state hint if no assets are available
+            if not assets:
+                self._asset_panel._sel_lbl.setText(
+                    "✅  All assets are currently issued or no assets registered yet."
+                )
+                self._asset_panel._sel_lbl.setStyleSheet(
+                    "color:#B45309; font-size:12px; padding:6px 10px; "
+                    "background:#FEF3C7; border-radius:6px;"
+                )
         except Exception as e:
             logger.error(f"Asset load error: {e}")
 

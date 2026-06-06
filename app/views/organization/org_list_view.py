@@ -9,8 +9,10 @@ from PySide6.QtWidgets import (
     QFrame, QDialog,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from app.services.organization_service import OrganizationService
+from app.core.exceptions import SanchayError
 from app.core.signals import app_signals
 from app.models.organization import Organization
 from app.views.widgets.data_table import DataTable
@@ -38,6 +40,13 @@ class OrgListView(QWidget):
         app_signals.org_updated.connect(lambda _: self._load())
         app_signals.org_deleted.connect(lambda _: self._load())
 
+        # Keyboard shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_create)
+        QShortcut(QKeySequence("F5"),     self).activated.connect(self._load)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(
+            lambda: self._search.setFocus()
+        )
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -60,6 +69,7 @@ class OrgListView(QWidget):
 
         add_btn = QPushButton("+ New Organization")
         add_btn.setFixedHeight(38)
+        add_btn.setToolTip("Register a new organization (Ctrl+N)")
         add_btn.setStyleSheet("""
             QPushButton {
                 background: #2563EB; color: white; border-radius: 6px;
@@ -91,6 +101,7 @@ class OrgListView(QWidget):
     # ── Data ──────────────────────────────────────────────────────────────────
 
     def _load(self, query: str = "") -> None:
+        self._count_lbl.setText("Loading…")
         try:
             all_orgs = self._service.get_all(active_only=False)
             if query:
@@ -105,6 +116,7 @@ class OrgListView(QWidget):
             self._render()
         except Exception as e:
             logger.error(f"Failed to load organizations: {e}")
+            self._count_lbl.setText("Error loading data")
 
     def _render(self) -> None:
         self._table.setRowCount(0)
@@ -156,21 +168,37 @@ class OrgListView(QWidget):
         self._load(query)
 
     def _on_create(self) -> None:
-        dlg = OrgFormDialog(parent=self)
-        if dlg.exec() == QDialog.Accepted:
+        try:
+            dlg = OrgFormDialog(parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit(
+                    "Success", "Organization created successfully.", "success"
+                )
+                app_signals.refresh_dashboard.emit()
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_create")
             app_signals.show_notification.emit(
-                "Success", "Organization created successfully.", "success"
+                "Error", "An unexpected error occurred. Please try again.", "error"
             )
-            app_signals.refresh_dashboard.emit()
 
     def _on_edit(self, org_id: int) -> None:
         org = next((o for o in self._orgs if o.id == org_id), None)
         if not org:
             return
-        dlg = OrgFormDialog(org=org, parent=self)
-        if dlg.exec() == QDialog.Accepted:
+        try:
+            dlg = OrgFormDialog(org=org, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit(
+                    "Success", "Organization updated.", "success"
+                )
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_edit")
             app_signals.show_notification.emit(
-                "Success", "Organization updated.", "success"
+                "Error", "An unexpected error occurred. Please try again.", "error"
             )
 
     def _on_toggle(self, org_id: int) -> None:

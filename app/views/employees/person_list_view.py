@@ -11,9 +11,11 @@ from PySide6.QtWidgets import (
     QComboBox,
 )
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from app.services.person_service import PersonService
 from app.services.organization_service import DepartmentService
+from app.core.exceptions import SanchayError
 from app.core.security import current_session
 from app.core.signals import app_signals
 from app.models.person import Person
@@ -53,6 +55,13 @@ class PersonListView(QWidget):
         app_signals.person_created.connect(lambda _: self._load())
         app_signals.person_updated.connect(lambda _: self._load())
         app_signals.person_deleted.connect(lambda _: self._load())
+
+        # Keyboard shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_create)
+        QShortcut(QKeySequence("F5"),     self).activated.connect(self._load)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(
+            lambda: self._search.setFocus()
+        )
 
     # ── UI Construction ───────────────────────────────────────────────────────
 
@@ -137,6 +146,7 @@ class PersonListView(QWidget):
 
         add_btn = QPushButton("+ Add Person")
         add_btn.setFixedHeight(36)
+        add_btn.setToolTip("Add a new person (Ctrl+N)")
         add_btn.setStyleSheet("""
             QPushButton {
                 background: #2563EB; color: white; border-radius: 6px;
@@ -186,6 +196,7 @@ class PersonListView(QWidget):
 
     def _load(self) -> None:
         """Reload persons with current filters."""
+        self._count_lbl.setText("Loading…")
         try:
             org_id    = current_session.org_id
             query     = self._search.text()
@@ -205,6 +216,7 @@ class PersonListView(QWidget):
             self._render(total)
         except Exception as e:
             logger.error(f"Person list load error: {e}")
+            self._count_lbl.setText("Error loading data")
 
     def _render(self, total: int) -> None:
         self._table.setRowCount(0)
@@ -266,20 +278,36 @@ class PersonListView(QWidget):
 
     def _on_create(self) -> None:
         initial_type = self._active_type or "employee"
-        dlg = PersonFormDialog(initial_type=initial_type, parent=self)
-        if dlg.exec() == QDialog.Accepted:
+        try:
+            dlg = PersonFormDialog(initial_type=initial_type, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit(
+                    "Success", "Person added successfully.", "success"
+                )
+                app_signals.refresh_dashboard.emit()
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_create")
             app_signals.show_notification.emit(
-                "Success", "Person added successfully.", "success"
+                "Error", "An unexpected error occurred. Please try again.", "error"
             )
-            app_signals.refresh_dashboard.emit()
 
     def _on_edit(self, person_id: int) -> None:
         person = next((p for p in self._persons if p.id == person_id), None)
         if not person:
             return
-        dlg = PersonFormDialog(person=person, parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Person updated.", "success")
+        try:
+            dlg = PersonFormDialog(person=person, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Person updated.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_edit")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_toggle(self, person_id: int) -> None:
         person = next((p for p in self._persons if p.id == person_id), None)

@@ -24,6 +24,15 @@ class OrganizationRepository(BaseRepository[Organization]):
         )
 
     def get_by_code(self, code: str) -> Optional[Organization]:
+        """Return organization by code.
+        
+        Strips and uppercases the code before querying so minor formatting
+        differences never cause missed lookups.
+        """
+        if not code:
+            return None
+        # Defensive: normalise code before DB lookup
+        code = code.strip().upper()
         return (
             self.db.query(Organization)
             .filter(Organization.code == code, Organization.is_deleted == False)
@@ -31,6 +40,15 @@ class OrganizationRepository(BaseRepository[Organization]):
         )
 
     def code_exists(self, code: str, exclude_id: Optional[int] = None) -> bool:
+        """Return True if an organization with this code already exists.
+        
+        Strips and uppercases the code before checking so the uniqueness
+        constraint is case-insensitive and whitespace-tolerant.
+        """
+        if not code:
+            return False
+        # Defensive: normalise code before DB lookup
+        code = code.strip().upper()
         q = self.db.query(Organization).filter(
             Organization.code == code, Organization.is_deleted == False
         )

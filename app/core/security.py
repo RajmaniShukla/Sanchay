@@ -28,6 +28,9 @@ def hash_password(plain_password: str) -> str:
         raise ValueError("Password cannot be empty.")
     if len(plain_password) < 6:
         raise ValueError("Password must be at least 6 characters.")
+    # bcrypt silently truncates at 72 bytes — reject inputs beyond that
+    if len(plain_password.encode("utf-8")) > 72:
+        raise ValueError("Password must not exceed 72 characters.")
 
     salt = bcrypt.gensalt(rounds=config.BCRYPT_ROUNDS)
     hashed = bcrypt.hashpw(plain_password.encode("utf-8"), salt)
@@ -64,8 +67,9 @@ def validate_password_strength(password: str) -> tuple[bool, str]:
     """
     if len(password) < 6:
         return False, "Password must be at least 6 characters long."
-    if len(password) > 128:
-        return False, "Password must not exceed 128 characters."
+    # bcrypt hard-limits input to 72 bytes; cap here to prevent silent truncation
+    if len(password.encode("utf-8")) > 72:
+        return False, "Password must not exceed 72 characters."
     return True, "Password is valid."
 
 
@@ -189,3 +193,57 @@ class UserSession:
 # ── Module-level session singleton ────────────────────────────────────────────
 # Import this everywhere: from app.core.security import current_session
 current_session = UserSession()
+
+
+# ── Role hierarchy ────────────────────────────────────────────────────────────
+_ROLE_HIERARCHY: dict = {"admin": 4, "manager": 3, "operator": 2, "viewer": 1}
+
+
+# ── Session enforcement helpers ───────────────────────────────────────────────
+
+def require_authenticated() -> None:
+    """
+    Raise AuthenticationError if no authenticated session exists.
+    Raise SessionExpiredError if the session has timed out.
+    Call at the start of every service method that requires login.
+    """
+    # Lazy imports to avoid circular dependency (exceptions → security would be circular)
+    from app.core.exceptions import AuthenticationError, SessionExpiredError  # noqa: PLC0415
+    if not current_session.is_authenticated:
+        raise AuthenticationError("Please log in first.")
+    if current_session.is_expired:
+        current_session.logout()
+        raise SessionExpiredError()
+
+
+def require_role(minimum_role: str) -> None:
+    """
+    Raise PermissionDeniedError if the current user's role is below minimum_role.
+
+    Role hierarchy (highest → lowest): admin > manager > operator > viewer
+    Passing 'operator' means operators, managers, and admins are all allowed.
+
+    Args:
+        minimum_role: Lowest role that may perform the action.
+    """
+    from app.core.exceptions import PermissionDeniedError  # noqa: PLC0415
+    require_authenticated()
+    user_rank = _ROLE_HIERARCHY.get(current_session.role or "", 0)
+    required_rank = _ROLE_HIERARCHY.get(minimum_role, 0)
+    if user_rank < required_rank:
+        raise PermissionDeniedError(
+            f"perform this action (requires '{minimum_role}' role or above)"
+        )
+
+
+def require_permission(permission: str) -> None:
+    """
+    Raise PermissionDeniedError if the current user lacks the specified permission.
+
+    Args:
+        permission: e.g. 'assets:w', 'reports:r'
+    """
+    from app.core.exceptions import PermissionDeniedError  # noqa: PLC0415
+    require_authenticated()
+    if not current_session.has_permission(permission):
+        raise PermissionDeniedError(f"access '{permission}'")

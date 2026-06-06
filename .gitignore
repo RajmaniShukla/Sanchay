@@ -50,3 +50,7 @@ htmlcov/
 
 # Uploaded files
 app/resources/uploads/
+
+# Runtime data directory (DB, temp files)
+data/
+

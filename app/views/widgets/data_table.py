@@ -110,6 +110,15 @@ class DataTable(QTableWidget):
         layout.setContentsMargins(4, 2, 4, 2)
         layout.setSpacing(4)
 
+        tooltip_map = {
+            "Edit":     "Edit this record (double-click row)",
+            "Delete":   "Permanently delete (cannot be undone)",
+            "Return":   "Record asset return",
+            "View":     "View full details",
+            "Activate": "Activate this record",
+            "Deactivate": "Deactivate this record",
+            "Password": "Change password for this user",
+        }
         for label, icon_text, callback in actions:
             btn = QPushButton(f"{icon_text} {label}" if icon_text else label)
             btn.setObjectName("iconButton")
@@ -119,6 +128,7 @@ class DataTable(QTableWidget):
                 "padding: 2px 8px; font-size: 11px; }"
                 "QPushButton:hover { background-color: #EFF6FF; border-color: #93C5FD; }"
             )
+            btn.setToolTip(tooltip_map.get(label, label))
             btn.clicked.connect(callback)
             layout.addWidget(btn)
 

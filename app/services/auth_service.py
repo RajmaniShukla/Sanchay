@@ -6,12 +6,17 @@ All business rules for authentication live here.
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Optional
 from loguru import logger
 
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, current_session
+from app.core.security import (
+    hash_password, verify_password, current_session,
+    require_authenticated, require_role,
+)
+from app.core.validators import validate_email, validate_username, sanitise_str, require_str
 from app.core.exceptions import (
     AuthenticationError, AccountInactiveError, ValidationError,
     DuplicateEntryError, NotFoundError, PermissionDeniedError,
@@ -20,6 +25,32 @@ from app.models.user import User, Role
 from app.models.audit import AuditLog
 from app.repositories.user_repository import UserRepository, RoleRepository
 from app.constants import UserRole, AuditAction
+
+
+# ── Validation patterns ────────────────────────────────────────────────────────
+
+EMAIL_RE    = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+USERNAME_RE = re.compile(r'^[a-z0-9_]{1,64}$')
+
+
+def _validate_email(email: str) -> None:
+    """Raise ValidationError if email format is invalid."""
+    if email and not EMAIL_RE.match(email):
+        raise ValidationError(
+            f"The email address '{email}' doesn't look right. "
+            "Please use a format like user@example.com.",
+            "email",
+        )
+
+
+def _validate_username(username: str) -> None:
+    """Raise ValidationError if username contains invalid characters or spaces."""
+    if not USERNAME_RE.match(username):
+        raise ValidationError(
+            "Username must be lowercase, contain only letters, digits, or underscores, "
+            "and have no spaces.",
+            "username",
+        )
 
 
 # ── Default role permissions ──────────────────────────────────────────────────
@@ -66,13 +97,18 @@ class AuthService:
             AuthenticationError: Bad credentials.
             AccountInactiveError: Account is deactivated.
         """
+        username = username.strip().lower()
+        logger.debug(f"Login attempt for username='{username}'")
+
         with get_db() as db:
             repo = UserRepository(db)
-            user = repo.get_by_username(username.strip().lower())
+            user = repo.get_by_username(username)
 
             if not user or not verify_password(password, user.password_hash):
                 logger.warning(f"Failed login attempt for username='{username}'")
-                raise AuthenticationError()
+                raise AuthenticationError(
+                    "The username or password you entered is incorrect. Please try again."
+                )
 
             if not user.is_active:
                 raise AccountInactiveError()
@@ -131,9 +167,44 @@ class AuthService:
     ) -> User:
         """
         Create a new user account.
-        Only admins can call this in the UI (enforced at controller level).
+
+        Permission rules:
+        - If an authenticated admin session exists, the request proceeds.
+        - If NOT authenticated, creation is allowed ONLY when no admin users
+          exist yet (bootstrap/first-run mode). This supports the initial
+          setup flow without requiring a pre-existing admin.
+        - Any other unauthenticated call raises AuthenticationError.
         """
-        username = username.strip().lower()
+        if not current_session.is_authenticated:
+            # Bootstrap gate: allow only if no admin accounts exist yet
+            with get_db() as _bdb:
+                _rr = RoleRepository(_bdb)
+                _ur = UserRepository(_bdb)
+                _admin_role = _rr.get_by_name(UserRole.ADMIN.value)
+                _admin_count = _ur.count_admins() if _admin_role else 0
+            if _admin_count > 0:
+                raise PermissionDeniedError("create users without logging in")
+        else:
+            require_role("admin")
+
+        username  = username.strip().lower()
+        full_name = full_name.strip()
+        email     = email.strip() if email else None
+
+        # Validate username format
+        _validate_username(username)
+
+        # Validate email if provided
+        if email:
+            _validate_email(email)
+
+        if not full_name:
+            raise ValidationError("Full name is required.", "full_name")
+
+        if not password:
+            raise ValidationError("Password is required.", "password")
+
+        logger.debug(f"Creating user '{username}' with role '{role_name}'")
 
         with get_db() as db:
             repo = UserRepository(db)
@@ -148,12 +219,16 @@ class AuthService:
             # Validate role
             role = role_repo.get_by_name(role_name)
             if not role:
-                raise ValidationError(f"Invalid role: {role_name}", "role")
+                raise ValidationError(
+                    f"The role '{role_name}' does not exist. "
+                    "Please choose a valid role (admin, manager, operator, viewer).",
+                    "role",
+                )
 
             user = User(
                 username=username,
-                full_name=full_name.strip(),
-                email=email.strip() if email else None,
+                full_name=full_name,
+                email=email,
                 password_hash=hash_password(password),
                 role_id=role.id,
                 org_id=org_id,
@@ -161,6 +236,9 @@ class AuthService:
                 is_active=True,
             )
             repo.create(user)
+
+            # Eagerly load the role relationship before session closes
+            _ = user.role
 
             self._write_audit(
                 db, current_session.user_id, AuditAction.CREATE, "users", user.id,
@@ -170,7 +248,19 @@ class AuthService:
             return user
 
     def change_password(self, user_id: int, new_password: str) -> None:
-        """Change a user's password."""
+        """Change a user's password.
+
+        - Admins may change any user's password.
+        - Non-admins may only change their own password.
+        """
+        require_authenticated()
+        # Allow: admin changing anyone's, or user changing their own
+        if current_session.role != "admin" and current_session.user_id != user_id:
+            raise PermissionDeniedError("change another user's password")
+
+        if not new_password or not new_password.strip():
+            raise ValidationError("New password cannot be empty.", "new_password")
+
         with get_db() as db:
             repo = UserRepository(db)
             user = repo.get_by_id(user_id)
@@ -183,7 +273,13 @@ class AuthService:
             )
 
     def toggle_user_active(self, user_id: int) -> bool:
-        """Enable or disable a user account. Returns new is_active state."""
+        """Enable or disable a user account. Returns new is_active state.
+
+        Requires: authenticated session + admin role.
+        """
+        require_authenticated()
+        require_role("admin")
+
         with get_db() as db:
             repo = UserRepository(db)
             user = repo.get_by_id(user_id)
@@ -194,7 +290,9 @@ class AuthService:
             if user.role and user.role.name == "admin" and user.is_active:
                 if repo.count_admins() <= 1:
                     raise ValidationError(
-                        "Cannot deactivate the last admin account.", "is_active"
+                        "Cannot deactivate the last admin account. "
+                        "At least one admin must remain active.",
+                        "is_active",
                     )
 
             user.is_active = not user.is_active
@@ -204,6 +302,18 @@ class AuthService:
                 description=f"User '{user.username}' {action}.",
             )
             return user.is_active
+
+    def get_user_by_id(self, user_id: int) -> User:
+        """Return a User by primary key, raising NotFoundError if absent."""
+        logger.debug(f"Fetching user by id={user_id}")
+        with get_db() as db:
+            repo = UserRepository(db)
+            user = repo.get_by_id(user_id)
+            if not user:
+                raise NotFoundError("User", str(user_id))
+            # Eagerly load role so it survives session close
+            _ = user.role
+            return user
 
     def seed_default_roles(self) -> None:
         """Create the four default roles if they don't exist. Called on first run."""
@@ -220,11 +330,13 @@ class AuthService:
             logger.info("Default roles seeded.")
 
     def get_all_users(self) -> list[User]:
+        """Return all active users."""
         with get_db() as db:
             repo = UserRepository(db)
             return repo.get_active_users()
 
     def get_all_roles(self) -> list[Role]:
+        """Return all roles."""
         with get_db() as db:
             repo = RoleRepository(db)
             return repo.get_all()
@@ -234,6 +346,7 @@ class AuthService:
         db, user_id: Optional[int], action, module: str,
         record_id: Optional[int], description: str = ""
     ) -> None:
+        """Write an audit log entry within the current DB session."""
         log = AuditLog(
             user_id=user_id,
             action=action.value if hasattr(action, "value") else action,

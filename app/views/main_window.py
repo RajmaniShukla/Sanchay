@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QMessageBox,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon, QFont, QAction
+from PySide6.QtGui import QIcon, QFont, QAction, QPixmap, QPainter, QColor
 
 from app.config import config
 from app.core.security import current_session
@@ -19,6 +19,26 @@ from app.core.signals import app_signals
 from app.views.dashboard_view import DashboardView
 from app.views.widgets.notification import show_toast
 from loguru import logger
+
+
+def _make_emoji_icon(size: int = 32) -> QIcon:
+    """Generate a simple colored-square QIcon using QPainter (no external files needed)."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setBrush(QColor("#2563EB"))
+    painter.setPen(Qt.NoPen)
+    painter.drawRoundedRect(0, 0, size, size, size // 4, size // 4)
+    # Draw a lighter "S" shape
+    painter.setPen(QColor("white"))
+    font = painter.font()
+    font.setPixelSize(size // 2)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), Qt.AlignCenter, "S")
+    painter.end()
+    return QIcon(pixmap)
 
 
 # ── Navigation Item Definition ────────────────────────────────────────────────
@@ -100,6 +120,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{config.APP_NAME} — {config.APP_TAGLINE}")
+        self.setWindowIcon(_make_emoji_icon(32))
         self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
         self._nav_buttons: dict[str, SidebarButton] = {}
         self._pages: dict[str, QWidget] = {}
@@ -108,6 +129,7 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._connect_signals()
         self._navigate_to("dashboard")
+        self._show_org_status()
 
     # ── UI Construction ───────────────────────────────────────────────────────
 
@@ -381,6 +403,9 @@ class MainWindow(QMainWindow):
             "return":        self._load_return_view,
             "transactions":  self._load_transaction_view,
             "reports":       self._load_report_view,
+            "settings":      self._load_settings_view,
+            "users":         self._load_user_view,
+            "backup":        self._load_backup_view,
         }
         loader = loaders.get(key)
         if loader:
@@ -451,6 +476,24 @@ class MainWindow(QMainWindow):
         if not isinstance(existing, ReportView):
             self._replace_placeholder("reports", ReportView())
 
+    def _load_settings_view(self) -> None:
+        existing = self._pages.get("settings")
+        from app.views.settings.settings_view import SettingsView
+        if not isinstance(existing, SettingsView):
+            self._replace_placeholder("settings", SettingsView())
+
+    def _load_user_view(self) -> None:
+        existing = self._pages.get("users")
+        from app.views.settings.user_list_view import UserListView
+        if not isinstance(existing, UserListView):
+            self._replace_placeholder("users", UserListView())
+
+    def _load_backup_view(self) -> None:
+        existing = self._pages.get("backup")
+        from app.views.settings.backup_view import BackupView
+        if not isinstance(existing, BackupView):
+            self._replace_placeholder("backup", BackupView())
+
     # ── Signals & Events ──────────────────────────────────────────────────────
 
     def _connect_signals(self) -> None:
@@ -464,10 +507,30 @@ class MainWindow(QMainWindow):
     def _on_status_message(self, message: str) -> None:
         self.statusBar().showMessage(message, 4000)
 
+    def _show_org_status(self) -> None:
+        """Show the current org name in the status bar after login."""
+        try:
+            org_id = current_session.org_id
+            if org_id:
+                from app.services.organization_service import OrganizationService
+                orgs = OrganizationService().get_all()
+                org = next((o for o in orgs if o.id == org_id), None)
+                if org:
+                    msg = f"🏢  {org.name}  |  Logged in as {current_session.full_name or current_session.username}  (@{current_session.role})"
+                    self.statusBar().showMessage(msg)
+                    return
+            self.statusBar().showMessage(
+                f"Logged in as {current_session.full_name or current_session.username} (@{current_session.role})"
+            )
+        except Exception:
+            pass
+
     def _on_logout(self) -> None:
         reply = QMessageBox.question(
-            self, "Logout",
-            "Are you sure you want to logout?",
+            self,
+            "Confirm Logout",
+            f"Logout as '{current_session.username}'?\n\n"
+            "All unsaved changes will be lost.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )

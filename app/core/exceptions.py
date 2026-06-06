@@ -17,6 +17,13 @@ class SanchayError(Exception):
     def __str__(self) -> str:
         return f"[{self.code}] {self.message}"
 
+    def to_user_message(self) -> str:
+        """
+        Return the human-readable error message without any code prefix.
+        Use this when displaying errors in the UI layer.
+        """
+        return self.message
+
 
 # ── Authentication Errors ─────────────────────────────────────────────────────
 

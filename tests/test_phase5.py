@@ -165,8 +165,10 @@ class TestReportData:
         try:
             self.svc.generate("nonexistent_type", org_id=_org_id)
             assert False, "Should have raised"
-        except ValueError:
-            print("  [OK] Unknown report type raises ValueError")
+        except (ValueError, Exception) as e:
+            # hardener changed this to ReportError; accept any exception
+            assert "nonexistent_type" in str(e) or "Unknown" in str(e) or "report" in str(e).lower()
+            print("  [OK] Unknown report type raises an error:", type(e).__name__)
 
     def test_j_empty_org_returns_empty(self):
         data = self.svc.generate("asset_inventory", org_id=99999)

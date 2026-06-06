@@ -10,7 +10,7 @@ from datetime import datetime, date
 from loguru import logger
 
 from app.core.database import get_db
-from app.core.security import current_session
+from app.core.security import current_session, require_authenticated, require_role
 from app.core.exceptions import (
     AssetNotAvailableError, PersonInactiveError, ActiveIssueExistsError,
     NoActiveIssueError, NotFoundError, ValidationError,
@@ -21,6 +21,18 @@ from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.asset_repository import AssetRepository
 from app.repositories.person_repository import PersonRepository
 from app.constants import AssetStatus, IssueStatus, AuditAction
+
+
+# ── Condition severity ordering (lower index = better condition) ───────────────
+
+_CONDITION_ORDER = ["excellent", "good", "fair", "poor", "damaged"]
+
+
+def _condition_rank(condition: Optional[str]) -> int:
+    """Return severity rank (lower = better). Unknown conditions rank as 0."""
+    if not condition:
+        return 0
+    return _CONDITION_ORDER.index(condition.lower()) if condition.lower() in _CONDITION_ORDER else 0
 
 
 class TransactionService:
@@ -46,11 +58,38 @@ class TransactionService:
         """
         Issue an asset to a person.
         
+        Requires: authenticated session + operator role (or above).
+
         Raises:
+            AuthenticationError / SessionExpiredError: Not logged in.
+            PermissionDeniedError: Insufficient role.
             AssetNotAvailableError: Asset is not in 'available' state.
             PersonInactiveError: Person is inactive.
             ActiveIssueExistsError: Asset already has an active issue.
+            ValidationError: Invalid asset_id, person_id, or expected_return_date.
         """
+        require_authenticated()
+        require_role("operator")
+
+        # Defensive ID checks
+        if asset_id is None or asset_id <= 0:
+            raise ValidationError("Invalid asset ID.", "asset_id")
+        if person_id is None or person_id <= 0:
+            raise ValidationError("Invalid person ID.", "person_id")
+
+        # Validate expected_return_date
+        if expected_return_date is not None:
+            today = date.today()
+            if expected_return_date < today:
+                logger.warning(
+                    f"issue_asset: expected_return_date {expected_return_date} is in the past "
+                    f"(today={today}) for asset_id={asset_id}. Proceeding with past date."
+                )
+        else:
+            logger.debug(
+                f"Issue for asset_id={asset_id}: no expected_return_date set (open-ended issue)."
+            )
+
         with get_db() as db:
             asset_repo = AssetRepository(db)
             person_repo = PersonRepository(db)
@@ -94,11 +133,12 @@ class TransactionService:
             db.flush()
 
             # ── Audit ──────────────────────────────────────────────────────────
+            no_return_note = "" if expected_return_date else " (no return date set)"
             self._audit(
                 db, AuditAction.ISSUE, "asset_issues", issue.id,
                 description=(
                     f"Asset '{asset.name}' ({asset.asset_code}) issued to "
-                    f"'{person.full_name}' ({person.display_code})."
+                    f"'{person.full_name}' ({person.display_code}){no_return_note}."
                 ),
             )
             logger.info(
@@ -115,11 +155,19 @@ class TransactionService:
     ) -> AssetReturn:
         """
         Record the return of an issued asset.
+        Updates asset condition if returned condition is worse than current.
         
+        Requires: authenticated session + operator role (or above).
+
         Raises:
+            AuthenticationError / SessionExpiredError: Not logged in.
+            PermissionDeniedError: Insufficient role.
             NotFoundError: Issue record not found.
             NoActiveIssueError: Issue is already resolved.
         """
+        require_authenticated()
+        require_role("operator")
+
         with get_db() as db:
             txn_repo = TransactionRepository(db)
             asset_repo = AssetRepository(db)
@@ -130,6 +178,14 @@ class TransactionService:
                 raise NotFoundError("Issue Record", str(issue_id))
             if issue.status not in (IssueStatus.ACTIVE.value, IssueStatus.OVERDUE.value):
                 raise NoActiveIssueError(issue.asset_name)
+
+            # ── Warn if overdue (elevated log severity) ─────────────────────────────
+            if issue.status == IssueStatus.OVERDUE.value:
+                logger.warning(
+                    f"Overdue asset being returned: issue #{issue_id}, "
+                    f"asset='{issue.asset_name}', person='{issue.person_name}', "
+                    f"returned_by='{current_session.username}'."
+                )
 
             # ── Create return record ───────────────────────────────────────────
             asset_return = AssetReturn(
@@ -148,12 +204,20 @@ class TransactionService:
             issue.status = IssueStatus.RETURNED.value
             db.flush()
 
-            # ── Update asset status ────────────────────────────────────────────
+            # ── Update asset status + condition ───────────────────────────────
             asset = asset_repo.get_by_id(issue.asset_id)
             if asset:
                 asset.status = AssetStatus.AVAILABLE.value
+                # Only downgrade condition — never upgrade automatically
                 if condition_on_return:
-                    asset.condition = condition_on_return
+                    current_rank = _condition_rank(asset.condition)
+                    return_rank  = _condition_rank(condition_on_return)
+                    if return_rank > current_rank:
+                        logger.debug(
+                            f"Asset '{asset.name}' condition downgraded: "
+                            f"'{asset.condition}' → '{condition_on_return}'"
+                        )
+                        asset.condition = condition_on_return
                 db.flush()
 
             # ── Audit ──────────────────────────────────────────────────────────
@@ -167,38 +231,52 @@ class TransactionService:
             logger.info(f"Asset returned for issue #{issue_id}.")
             return asset_return
 
+    def get_issue_by_id(self, issue_id: int) -> Optional[AssetIssue]:
+        """Return an issue record by ID, or None if not found."""
+        logger.debug(f"Fetching issue by id={issue_id}")
+        with get_db() as db:
+            repo = TransactionRepository(db)
+            return repo.get_issue_by_id(issue_id)
+
     def get_all_issues(self, **kwargs) -> tuple[list[AssetIssue], int]:
+        """Return paginated issue records with optional filters."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_all_issues(**kwargs)
 
     def get_active_issues(self, org_id: Optional[int] = None) -> list[AssetIssue]:
+        """Return all currently active issues for an organisation."""
         with get_db() as db:
             repo = TransactionRepository(db)
             results, _ = repo.get_all_issues(org_id=org_id, status=IssueStatus.ACTIVE.value)
             return results
 
     def get_overdue_issues(self, org_id: Optional[int] = None) -> list[AssetIssue]:
+        """Return issues that are past their expected return date."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_overdue_issues(org_id)
 
     def get_issue_history_for_asset(self, asset_id: int) -> list[AssetIssue]:
+        """Return complete issue history for a specific asset."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_issues_for_asset(asset_id)
 
     def get_holdings_for_person(self, person_id: int) -> list[AssetIssue]:
+        """Return all assets currently held by a person."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_issues_for_person(person_id, status=IssueStatus.ACTIVE.value)
 
     def get_all_returns(self, **kwargs) -> tuple:
+        """Return paginated return records with optional filters."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_all_returns(**kwargs)
 
     def get_stats(self, org_id: Optional[int] = None) -> dict:
+        """Return summary statistics for the dashboard."""
         with get_db() as db:
             repo = TransactionRepository(db)
             return {
@@ -227,6 +305,7 @@ class TransactionService:
 
     @staticmethod
     def _audit(db, action, module: str, record_id: int, description: str = "") -> None:
+        """Write an audit log entry within the current DB session."""
         import json
         log = AuditLog(
             user_id=current_session.user_id,

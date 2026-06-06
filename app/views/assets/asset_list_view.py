@@ -10,9 +10,11 @@ from PySide6.QtWidgets import (
     QFrame, QDialog, QTableWidgetItem, QComboBox,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from app.services.asset_service import AssetService, AssetCategoryService
 from app.services.organization_service import DepartmentService
+from app.core.exceptions import SanchayError
 from app.core.security import current_session
 from app.core.signals import app_signals
 from app.models.asset import Asset
@@ -48,6 +50,13 @@ class AssetListView(QWidget):
         app_signals.asset_issued.connect(lambda *_: self._load())
         app_signals.asset_returned.connect(lambda *_: self._load())
 
+        # Keyboard shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_create)
+        QShortcut(QKeySequence("F5"),     self).activated.connect(self._load)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(
+            lambda: self._search.setFocus()
+        )
+
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
@@ -72,6 +81,7 @@ class AssetListView(QWidget):
 
         add_btn = QPushButton("+ Register Asset")
         add_btn.setFixedHeight(38)
+        add_btn.setToolTip("Register a new asset (Ctrl+N)")
         add_btn.setStyleSheet("""
             QPushButton { background:#2563EB; color:white; border-radius:6px;
                           font-weight:600; padding:0 18px; }
@@ -207,6 +217,7 @@ class AssetListView(QWidget):
     # ── Data ──────────────────────────────────────────────────────────────────
 
     def _load(self) -> None:
+        self._count_lbl.setText("Loading…")
         try:
             org_id  = current_session.org_id
             query   = self._search.text()
@@ -223,6 +234,7 @@ class AssetListView(QWidget):
             self._update_stat_pills()
         except Exception as e:
             logger.error(f"Asset list load error: {e}")
+            self._count_lbl.setText("Error loading data")
 
     def _render(self, total: int) -> None:
         self._table.setRowCount(0)
@@ -299,12 +311,20 @@ class AssetListView(QWidget):
         self._search.clear()
 
     def _on_create(self) -> None:
-        dlg = AssetFormDialog(parent=self)
-        if dlg.exec() == QDialog.Accepted:
+        try:
+            dlg = AssetFormDialog(parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit(
+                    "Success", "Asset registered successfully.", "success"
+                )
+                app_signals.refresh_dashboard.emit()
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_create")
             app_signals.show_notification.emit(
-                "Success", "Asset registered successfully.", "success"
+                "Error", "An unexpected error occurred. Please try again.", "error"
             )
-            app_signals.refresh_dashboard.emit()
 
     def _on_view(self, asset_id: int) -> None:
         asset = next((a for a in self._assets if a.id == asset_id), None)
@@ -316,9 +336,17 @@ class AssetListView(QWidget):
         asset = next((a for a in self._assets if a.id == asset_id), None)
         if not asset:
             return
-        dlg = AssetFormDialog(asset=asset, parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Asset updated.", "success")
+        try:
+            dlg = AssetFormDialog(asset=asset, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Asset updated.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_edit")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_delete(self, asset_id: int) -> None:
         asset = next((a for a in self._assets if a.id == asset_id), None)

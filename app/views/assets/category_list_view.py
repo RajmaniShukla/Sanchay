@@ -10,8 +10,10 @@ from PySide6.QtWidgets import (
     QFrame, QDialog, QTableWidgetItem,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from app.services.asset_service import AssetCategoryService
+from app.core.exceptions import SanchayError
 from app.core.security import current_session
 from app.core.signals import app_signals
 from app.models.asset import AssetCategory
@@ -35,6 +37,13 @@ class CategoryListView(QWidget):
         app_signals.category_created.connect(lambda _: self._load())
         app_signals.category_updated.connect(lambda _: self._load())
 
+        # Keyboard shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_create)
+        QShortcut(QKeySequence("F5"),     self).activated.connect(self._load)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(
+            lambda: self._search.setFocus()
+        )
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -57,6 +66,7 @@ class CategoryListView(QWidget):
 
         add_btn = QPushButton("+ New Category")
         add_btn.setFixedHeight(38)
+        add_btn.setToolTip("Create a new asset category (Ctrl+N)")
         add_btn.setStyleSheet("""
             QPushButton { background:#2563EB; color:white; border-radius:6px;
                           font-weight:600; padding:0 18px; }
@@ -158,17 +168,33 @@ class CategoryListView(QWidget):
         self._load(query)
 
     def _on_create(self) -> None:
-        dlg = CategoryFormDialog(parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Category created.", "success")
+        try:
+            dlg = CategoryFormDialog(parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Category created.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_create")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_edit(self, cat_id: int) -> None:
         cat = next((c for c in self._cats if c.id == cat_id), None)
         if not cat:
             return
-        dlg = CategoryFormDialog(cat=cat, parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Category updated.", "success")
+        try:
+            dlg = CategoryFormDialog(cat=cat, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Category updated.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_edit")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_delete(self, cat_id: int) -> None:
         cat = next((c for c in self._cats if c.id == cat_id), None)

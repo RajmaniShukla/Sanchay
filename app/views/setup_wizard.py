@@ -294,3 +294,5 @@ class SetupWizard(QDialog):
         self.step2_error.setText(msg)
         self.step2_error.show()
         return False
+
+

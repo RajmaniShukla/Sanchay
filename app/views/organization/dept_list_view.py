@@ -9,8 +9,10 @@ from PySide6.QtWidgets import (
     QFrame, QDialog, QComboBox, QTableWidgetItem,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 
 from app.services.organization_service import OrganizationService, DepartmentService
+from app.core.exceptions import SanchayError
 from app.core.security import current_session
 from app.core.signals import app_signals
 from app.models.organization import Department, Organization
@@ -37,6 +39,13 @@ class DeptListView(QWidget):
         app_signals.dept_created.connect(lambda _: self._load_depts())
         app_signals.dept_updated.connect(lambda _: self._load_depts())
         app_signals.dept_deleted.connect(lambda _: self._load_depts())
+
+        # Keyboard shortcuts
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self._on_create)
+        QShortcut(QKeySequence("F5"),     self).activated.connect(self._load_depts)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(
+            lambda: self._search.setFocus()
+        )
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -78,6 +87,7 @@ class DeptListView(QWidget):
 
         add_btn = QPushButton("+ New Department")
         add_btn.setFixedHeight(38)
+        add_btn.setToolTip("Create a new department (Ctrl+N)")
         add_btn.setStyleSheet("""
             QPushButton {
                 background: #2563EB; color: white; border-radius: 6px;
@@ -195,17 +205,33 @@ class DeptListView(QWidget):
         if not self._selected_org_id:
             app_signals.show_notification.emit("Warning", "Please select an organization first.", "warning")
             return
-        dlg = DeptFormDialog(org_id=self._selected_org_id, parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Department created.", "success")
+        try:
+            dlg = DeptFormDialog(org_id=self._selected_org_id, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Department created.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_create")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_edit(self, dept_id: int) -> None:
         dept = next((d for d in self._depts if d.id == dept_id), None)
         if not dept:
             return
-        dlg = DeptFormDialog(org_id=self._selected_org_id, dept=dept, parent=self)
-        if dlg.exec() == QDialog.Accepted:
-            app_signals.show_notification.emit("Success", "Department updated.", "success")
+        try:
+            dlg = DeptFormDialog(org_id=self._selected_org_id, dept=dept, parent=self)
+            if dlg.exec() == QDialog.Accepted:
+                app_signals.show_notification.emit("Success", "Department updated.", "success")
+        except SanchayError as e:
+            app_signals.show_notification.emit("Error", e.message, "error")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {self.__class__.__name__}._on_edit")
+            app_signals.show_notification.emit(
+                "Error", "An unexpected error occurred. Please try again.", "error"
+            )
 
     def _on_delete(self, dept_id: int) -> None:
         dept = next((d for d in self._depts if d.id == dept_id), None)

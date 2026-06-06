@@ -31,18 +31,34 @@ class StatCard(QFrame):
         icon: str,
         bg_color: str = "#FFFFFF",
         accent: str = "#2563EB",
+        nav_key: str = "",
         parent=None,
     ):
         super().__init__(parent)
+        self.nav_key = nav_key
         self.setObjectName("statCard")
-        self.setStyleSheet(f"""
+        base_style = f"""
             QFrame {{
                 background-color: {bg_color};
                 border-radius: 12px;
                 border: 1px solid #E2E8F0;
                 border-left: 4px solid {accent};
             }}
-        """)
+        """
+        hover_style = f"""
+            QFrame {{
+                background-color: {bg_color};
+                border-radius: 12px;
+                border: 1px solid #93C5FD;
+                border-left: 4px solid {accent};
+            }}
+        """
+        self.setStyleSheet(base_style)
+        self._base_style  = base_style
+        self._hover_style = hover_style
+        if nav_key:
+            self.setCursor(Qt.PointingHandCursor)
+            self.setToolTip(f"Click to open {label} page")
         self.setFixedHeight(120)
 
         layout = QHBoxLayout(self)
@@ -83,6 +99,18 @@ class StatCard(QFrame):
 
     def update_value(self, value: str) -> None:
         self.value_lbl.setText(value)
+
+    def mousePressEvent(self, event) -> None:
+        if self.nav_key:
+            app_signals.navigate_to.emit(self.nav_key)
+
+    def enterEvent(self, event) -> None:
+        if self.nav_key:
+            self.setStyleSheet(self._hover_style)
+
+    def leaveEvent(self, event) -> None:
+        if self.nav_key:
+            self.setStyleSheet(self._base_style)
 
 
 class QuickActionCard(QFrame):
@@ -195,9 +223,25 @@ class DashboardView(QScrollArea):
         timer.timeout.connect(self._update_clock)
         timer.start(60000)
 
+        # Refresh button
+        refresh_btn = QPushButton("🔄  Refresh")
+        refresh_btn.setFixedHeight(34)
+        refresh_btn.setToolTip("Refresh dashboard statistics")
+        refresh_btn.setStyleSheet("""
+            QPushButton {
+                background: #F1F5F9; border: 1px solid #E2E8F0;
+                border-radius: 8px; color: #374151;
+                font-size: 12px; font-weight: 500; padding: 0 14px;
+            }
+            QPushButton:hover { background: #E2E8F0; border-color: #CBD5E1; }
+        """)
+        refresh_btn.clicked.connect(self._load_stats)
+
         welcome_row.addWidget(self.welcome_lbl)
         welcome_row.addStretch()
         welcome_row.addWidget(self.date_lbl)
+        welcome_row.addSpacing(12)
+        welcome_row.addWidget(refresh_btn)
         layout.addLayout(welcome_row)
 
         # ── Stats cards ────────────────────────────────────────────────────────
@@ -208,12 +252,12 @@ class DashboardView(QScrollArea):
         stats_grid = QGridLayout()
         stats_grid.setSpacing(16)
 
-        self.card_total      = StatCard("Total Assets",     "—", "📦", accent="#2563EB")
-        self.card_available  = StatCard("Available",        "—", "✅", accent="#16A34A")
-        self.card_issued     = StatCard("Currently Issued", "—", "📤", accent="#0891B2")
-        self.card_overdue    = StatCard("Overdue",          "—", "⚠️", accent="#DC2626")
-        self.card_persons    = StatCard("Active Persons",   "—", "👥", accent="#7C3AED")
-        self.card_cats       = StatCard("Categories",       "—", "🗂️", accent="#D97706")
+        self.card_total      = StatCard("Total Assets",     "—", "📦", accent="#2563EB", nav_key="assets")
+        self.card_available  = StatCard("Available",        "—", "✅", accent="#16A34A", nav_key="assets")
+        self.card_issued     = StatCard("Currently Issued", "—", "📤", accent="#0891B2", nav_key="transactions")
+        self.card_overdue    = StatCard("Overdue",          "—", "⚠️", accent="#DC2626", nav_key="transactions")
+        self.card_persons    = StatCard("Active Persons",   "—", "👥", accent="#7C3AED", nav_key="persons")
+        self.card_cats       = StatCard("Categories",       "—", "🗂️", accent="#D97706", nav_key="categories")
 
         stats_grid.addWidget(self.card_total,     0, 0)
         stats_grid.addWidget(self.card_available, 0, 1)
@@ -246,6 +290,25 @@ class DashboardView(QScrollArea):
             qa_grid.addWidget(card, i // 3, i % 3)
 
         layout.addLayout(qa_grid)
+
+        # ── Recent Activity ────────────────────────────────────────────────────
+        activity_lbl = QLabel("Recent Activity")
+        activity_lbl.setStyleSheet("font-size: 14px; font-weight: 600; color: #374151;")
+        layout.addWidget(activity_lbl)
+
+        self._activity_frame = QFrame()
+        self._activity_frame.setStyleSheet("""
+            QFrame {
+                background: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 10px;
+            }
+        """)
+        self._activity_layout = QVBoxLayout(self._activity_frame)
+        self._activity_layout.setContentsMargins(16, 12, 16, 12)
+        self._activity_layout.setSpacing(0)
+        layout.addWidget(self._activity_frame)
+
         layout.addStretch()
 
     def _load_stats(self) -> None:
@@ -279,6 +342,88 @@ class DashboardView(QScrollArea):
 
         except Exception as e:
             logger.error(f"Dashboard stats load error: {e}")
+
+        # Always try to load recent activity
+        self._load_recent_activity()
+
+    def _load_recent_activity(self) -> None:
+        """Fetch last 5 audit log entries and display them."""
+        # Clear existing activity rows
+        while self._activity_layout.count():
+            item = self._activity_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        try:
+            from app.core.database import get_db
+            from app.models.audit import AuditLog
+            from sqlalchemy import desc
+
+            with get_db() as db:
+                logs = (
+                    db.query(AuditLog)
+                    .order_by(desc(AuditLog.timestamp))
+                    .limit(5)
+                    .all()
+                )
+
+            if not logs:
+                empty_lbl = QLabel("—  No recent activity")
+                empty_lbl.setStyleSheet("color: #94A3B8; font-size: 12px; padding: 8px 0;")
+                self._activity_layout.addWidget(empty_lbl)
+                return
+
+            action_icons = {
+                "CREATE": "➕",  "UPDATE": "✏️",  "DELETE": "🗑️",
+                "LOGIN":  "🔑",  "LOGOUT": "🚪",   "ISSUE":  "📤",
+                "RETURN": "📥",
+            }
+
+            for i, log in enumerate(logs):
+                row = QFrame()
+                row.setStyleSheet(
+                    "QFrame { border: none; "
+                    + ("border-bottom: 1px solid #F1F5F9; " if i < len(logs) - 1 else "")
+                    + "}"
+                )
+                row_lay = QHBoxLayout(row)
+                row_lay.setContentsMargins(0, 8, 0, 8)
+                row_lay.setSpacing(10)
+
+                action = log.action or "ACTION"
+                icon   = action_icons.get(action.upper(), "📝")
+
+                icon_lbl = QLabel(icon)
+                icon_lbl.setFixedWidth(24)
+                icon_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
+
+                desc_text = log.description or f"{action} on {log.table_name or 'record'}"
+                if len(desc_text) > 80:
+                    desc_text = desc_text[:77] + "…"
+
+                user_part = f" — {log.user.username}" if log.user else ""
+                detail_lbl = QLabel(f"{desc_text}{user_part}")
+                detail_lbl.setStyleSheet(
+                    "font-size: 12px; color: #374151; background: transparent; border: none;"
+                )
+
+                ts_str = log.timestamp.strftime("%d %b  %H:%M") if log.timestamp else ""
+                ts_lbl = QLabel(ts_str)
+                ts_lbl.setStyleSheet(
+                    "font-size: 11px; color: #94A3B8; background: transparent; border: none;"
+                )
+                ts_lbl.setAlignment(Qt.AlignRight)
+
+                row_lay.addWidget(icon_lbl)
+                row_lay.addWidget(detail_lbl, 1)
+                row_lay.addWidget(ts_lbl)
+                self._activity_layout.addWidget(row)
+
+        except Exception as e:
+            logger.warning(f"Could not load recent activity: {e}")
+            err_lbl = QLabel("—  Activity log unavailable")
+            err_lbl.setStyleSheet("color: #94A3B8; font-size: 12px; padding: 8px 0;")
+            self._activity_layout.addWidget(err_lbl)
 
     def _update_clock(self) -> None:
         from datetime import datetime

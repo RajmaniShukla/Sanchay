@@ -196,6 +196,7 @@ class ReturnView(QWidget):
     # ── Data ──────────────────────────────────────────────────────────────────
 
     def _load_issues(self, query: str = "") -> None:
+        self._count_lbl.setText("Loading…")
         try:
             issues, _ = self._txn_svc.get_all_issues(
                 org_id=current_session.org_id,
@@ -214,6 +215,7 @@ class ReturnView(QWidget):
             self._render()
         except Exception as e:
             logger.error(f"Return view load error: {e}")
+            self._count_lbl.setText("Error loading data")
 
     def _render(self) -> None:
         from datetime import date as dt_date
@@ -268,6 +270,16 @@ class ReturnView(QWidget):
 
         cnt = len(self._issues)
         self._count_lbl.setText(f"{cnt} active issue{'s' if cnt != 1 else ''}")
+
+        # Show an empty-state hint if no active issues exist
+        if cnt == 0:
+            self._footer_lbl.setText(
+                "ℹ️  No active issues found. All assets have been returned."
+            )
+            self._footer_lbl.setStyleSheet("color:#15803D; font-size:12px; font-weight:500;")
+        else:
+            self._footer_lbl.setText("Select an active issue from the table above.")
+            self._footer_lbl.setStyleSheet("color:#64748B; font-size:12px;")
 
     # ── Handlers ──────────────────────────────────────────────────────────────
 

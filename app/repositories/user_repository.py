@@ -5,7 +5,7 @@ Data access layer for User and Role entities.
 """
 
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.user import User, Role
 from app.repositories.base_repository import BaseRepository
 
@@ -37,23 +37,39 @@ class UserRepository(BaseRepository[User]):
     model = User
 
     def get_by_username(self, username: str) -> Optional[User]:
+        """Return user by username with role eagerly loaded."""
         return (
             self.db.query(User)
+            .options(joinedload(User.role))
             .filter(User.username == username, User.is_deleted == False)
             .first()
         )
 
     def get_by_email(self, email: str) -> Optional[User]:
+        """Return user by email with role eagerly loaded."""
         return (
             self.db.query(User)
+            .options(joinedload(User.role))
             .filter(User.email == email, User.is_deleted == False)
             .first()
         )
 
     def get_active_users(self) -> list[User]:
+        """Return all active users with role eagerly loaded."""
         return (
             self.db.query(User)
+            .options(joinedload(User.role))
             .filter(User.is_active == True, User.is_deleted == False)
+            .order_by(User.full_name)
+            .all()
+        )
+
+    def get_all_users(self) -> list[User]:
+        """Return ALL users (active + inactive) with role eagerly loaded."""
+        return (
+            self.db.query(User)
+            .options(joinedload(User.role))
+            .filter(User.is_deleted == False)
             .order_by(User.full_name)
             .all()
         )

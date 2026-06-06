@@ -124,6 +124,13 @@ def main() -> int:
             logger.info("Setup wizard cancelled. Exiting.")
             return 0
 
+    # ── Seed app settings defaults ─────────────────────────────────────────────
+    try:
+        from app.services.settings_service import SettingsService
+        SettingsService().seed_defaults()
+    except Exception as e:
+        logger.warning(f"Could not seed settings: {e}")
+
     # ── Sync overdue issues on startup ────────────────────────────────────────
     try:
         from app.services.transaction_service import TransactionService

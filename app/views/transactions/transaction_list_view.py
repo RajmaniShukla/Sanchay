@@ -202,6 +202,7 @@ class TransactionListView(QWidget):
 
     def _load(self, *_) -> None:
         tab = self._tabs.currentIndex()
+        self._count_lbl.setText("Loading…")
         try:
             from_dt, to_dt = self._get_dates()
             org_id = current_session.org_id
@@ -225,6 +226,7 @@ class TransactionListView(QWidget):
             self._update_stats(org_id)
         except Exception as e:
             logger.error(f"Transaction list load error: {e}")
+            self._count_lbl.setText("Error loading data")
 
     def _populate_issues(
         self, tbl: DataTable, org_id, status, from_dt, to_dt, query, with_return_btn
@@ -331,9 +333,15 @@ class TransactionListView(QWidget):
         )
 
     def _populate_returns(self, tbl: DataTable, org_id, from_dt, to_dt, query) -> None:
-        returns, total = self._txn_svc.get_all_returns(
-            org_id=org_id, from_date=from_dt, to_date=to_dt, limit=300
-        )
+        try:
+            returns, total = self._txn_svc.get_all_returns(
+                org_id=org_id, from_date=from_dt, to_date=to_dt, limit=300
+            )
+        except Exception as e:
+            logger.error(f"Failed to load returns: {e}")
+            tbl.setRowCount(0)
+            self._count_lbl.setText("Error loading returns")
+            return
         if query:
             q = query.lower()
             returns = [r for r in returns
