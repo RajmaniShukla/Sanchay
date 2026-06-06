@@ -357,11 +357,14 @@ class DashboardView(QScrollArea):
         try:
             from app.core.database import get_db
             from app.models.audit import AuditLog
+            from app.models.user import User
             from sqlalchemy import desc
+            from sqlalchemy.orm import joinedload
 
             with get_db() as db:
                 logs = (
                     db.query(AuditLog)
+                    .options(joinedload(AuditLog.user))   # eager-load user
                     .order_by(desc(AuditLog.timestamp))
                     .limit(5)
                     .all()

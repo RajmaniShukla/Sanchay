@@ -72,7 +72,11 @@ class AuditLog(Base):
 
     @property
     def username(self) -> str:
-        return self.user.username if self.user else "system"
+        """Safe username accessor — returns 'system' if user is None or detached."""
+        try:
+            return self.user.username if self.user else "system"
+        except Exception:
+            return "system"  # detached instance or lazy-load error → safe fallback
 
     def __repr__(self) -> str:
         return f"<AuditLog action='{self.action}' user='{self.username}' @ {self.timestamp}>"

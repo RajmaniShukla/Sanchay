@@ -242,12 +242,13 @@ class SettingsView(QWidget):
             from app.core.database import get_db
             from app.models.audit import AuditLog
             from sqlalchemy import or_
+            from sqlalchemy.orm import joinedload
 
             module_filter = self._audit_module.currentData() if hasattr(self, "_audit_module") else None
             q_text = query or (self._audit_search.text() if hasattr(self, "_audit_search") else "")
 
             with get_db() as db:
-                q = db.query(AuditLog)
+                q = db.query(AuditLog).options(joinedload(AuditLog.user))  # eager-load
                 if module_filter:
                     q = q.filter(AuditLog.module == module_filter)
                 if q_text:

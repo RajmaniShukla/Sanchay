@@ -1,5 +1,5 @@
 """
-Sanchay — Main Application Window
+Sanchay - Main Application Window
 =====================================
 The root window shown after login.
 Contains the sidebar navigation, top bar, and content area (stacked pages).
@@ -21,24 +21,90 @@ from app.views.widgets.notification import show_toast
 from loguru import logger
 
 
-def _make_emoji_icon(size: int = 32) -> QIcon:
-    """Generate a simple colored-square QIcon using QPainter (no external files needed)."""
+def _make_app_icon(size: int = 64) -> QIcon:
+    """
+    Programmatic app icon - blue rounded square with a white package glyph.
+    Used for both the taskbar and the window title bar.
+    No external image files required.
+    """
+    from PySide6.QtGui import QPainterPath
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setBrush(QColor("#2563EB"))
-    painter.setPen(Qt.NoPen)
-    painter.drawRoundedRect(0, 0, size, size, size // 4, size // 4)
-    # Draw a lighter "S" shape
-    painter.setPen(QColor("white"))
-    font = painter.font()
-    font.setPixelSize(size // 2)
-    font.setBold(True)
-    painter.setFont(font)
-    painter.drawText(pixmap.rect(), Qt.AlignCenter, "S")
-    painter.end()
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    # Background - deep blue rounded rect
+    p.setBrush(QColor("#2563EB"))
+    p.setPen(Qt.NoPen)
+    radius = size // 6
+    p.drawRoundedRect(0, 0, size, size, radius, radius)
+
+    # Box lid (top rectangle)
+    p.setBrush(QColor("#FFFFFF"))
+    lid_h = size // 8
+    lid_w = int(size * 0.55)
+    lid_x = (size - lid_w) // 2
+    lid_y = int(size * 0.22)
+    p.drawRoundedRect(lid_x, lid_y, lid_w, lid_h, 2, 2)
+
+    # Box body (larger rectangle below lid)
+    body_w = int(size * 0.50)
+    body_h = int(size * 0.35)
+    body_x = (size - body_w) // 2
+    body_y = lid_y + lid_h + 2
+    p.drawRoundedRect(body_x, body_y, body_w, body_h, 2, 2)
+
+    # Centre stripe on body
+    p.setBrush(QColor("#2563EB"))
+    stripe_w = int(size * 0.10)
+    stripe_x = (size - stripe_w) // 2
+    p.drawRect(stripe_x, body_y, stripe_w, body_h)
+
+    p.end()
     return QIcon(pixmap)
+
+
+def _make_emoji_icon(size: int = 32) -> QIcon:
+    """Alias kept for compatibility - delegates to _make_app_icon."""
+    return _make_app_icon(size)
+
+
+def _make_logout_icon(size: int = 18) -> QIcon:
+    """Draw a logout arrow icon using QPainter (no external image files)."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#94A3B8"))          # default grey; CSS hover overrides button bg
+
+    # Arrow shaft: horizontal rectangle
+    shaft_h = max(3, size // 5)
+    shaft_w = int(size * 0.55)
+    shaft_y = (size - shaft_h) // 2
+    p.drawRect(int(size * 0.28), shaft_y, shaft_w, shaft_h)
+
+    # Arrowhead: right-pointing triangle
+    from PySide6.QtGui import QPolygonF
+    from PySide6.QtCore import QPointF
+    tip_x   = size - 1
+    mid_y   = size // 2
+    head_h  = max(6, size // 2)
+    poly = QPolygonF([
+        QPointF(tip_x,              mid_y),
+        QPointF(tip_x - head_h // 2, mid_y - head_h // 2),
+        QPointF(tip_x - head_h // 2, mid_y + head_h // 2),
+    ])
+    p.drawPolygon(poly)
+
+    # Bracket: vertical bar on the left + top + bottom stubs
+    bar_w = max(2, size // 8)
+    p.drawRect(0, 0,            bar_w, int(size * 0.38))   # top-left stub
+    p.drawRect(0, int(size * 0.62), bar_w, int(size * 0.38))   # bottom-left stub
+    p.drawRect(0, 0,            bar_w, size)                # full left bar (thin)
+    p.end()
+    return QIcon(pixmap)
+
 
 
 # ── Navigation Item Definition ────────────────────────────────────────────────
@@ -110,7 +176,7 @@ class SidebarButton(QPushButton):
 class MainWindow(QMainWindow):
     """
     Root application window.
-    
+
     Architecture:
         - Left sidebar: navigation
         - Top bar: page title + user info
@@ -119,8 +185,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{config.APP_NAME} — {config.APP_TAGLINE}")
-        self.setWindowIcon(_make_emoji_icon(32))
+        self.setWindowTitle(f"{config.APP_NAME} - {config.APP_TAGLINE}")
+        icon = _make_app_icon(64)
+        self.setWindowIcon(icon)
         self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
         self._nav_buttons: dict[str, SidebarButton] = {}
         self._pages: dict[str, QWidget] = {}
@@ -177,20 +244,37 @@ class MainWindow(QMainWindow):
         # ── Logo area ──────────────────────────────────────────────────────────
         logo_frame = QFrame()
         logo_frame.setStyleSheet("background-color: #0F172A;")
-        logo_frame.setFixedHeight(72)
+        logo_frame.setFixedHeight(84)          # increased: was 72, clipped text
         logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(16, 12, 16, 12)
-        logo_layout.setSpacing(2)
+        logo_layout.setContentsMargins(16, 14, 16, 10)
+        logo_layout.setSpacing(4)
 
-        app_name = QLabel(f"📦 {config.APP_NAME}")
+        # Icon + name on one row
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.setContentsMargins(0, 0, 0, 0)
+
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(_make_app_icon(26).pixmap(26, 26))
+        icon_lbl.setFixedSize(28, 28)
+        icon_lbl.setAlignment(Qt.AlignCenter)
+
+        app_name = QLabel(config.APP_NAME)
         app_name.setObjectName("appTitle")
-        app_name.setStyleSheet("color: #F1F5F9; font-size: 17px; font-weight: 700;")
+        app_name.setStyleSheet(
+            "color: #F1F5F9; font-size: 16px; font-weight: 700; "
+            "letter-spacing: 0.5px;"
+        )
+
+        title_row.addWidget(icon_lbl)
+        title_row.addWidget(app_name)
+        title_row.addStretch()
 
         app_tag = QLabel(config.APP_TAGLINE)
         app_tag.setObjectName("appVersion")
         app_tag.setStyleSheet("color: #475569; font-size: 10px;")
 
-        logo_layout.addWidget(app_name)
+        logo_layout.addLayout(title_row)
         logo_layout.addWidget(app_tag)
         layout.addWidget(logo_frame)
 
@@ -224,38 +308,65 @@ class MainWindow(QMainWindow):
         nav_layout.addStretch()
         layout.addWidget(nav_widget, 1)
 
-        # ── User info + logout ─────────────────────────────────────────────────
+        # ── User profile strip + logout ───────────────────────────────────────
         bottom_frame = QFrame()
         bottom_frame.setStyleSheet("background-color: #0F172A; border-top: 1px solid #334155;")
         bottom_frame.setFixedHeight(72)
         b_layout = QHBoxLayout(bottom_frame)
-        b_layout.setContentsMargins(12, 10, 12, 10)
+        b_layout.setContentsMargins(12, 8, 10, 8)
+        b_layout.setSpacing(10)
 
+        # Avatar circle showing user initials
+        initials = (current_session.full_name or current_session.username or "?")[:2].upper()
+        avatar = QLabel(initials)
+        avatar.setFixedSize(38, 38)
+        avatar.setAlignment(Qt.AlignCenter)
+        avatar.setStyleSheet(
+            "background-color: #2563EB; color: white; border-radius: 19px; "
+            "font-size: 13px; font-weight: 700;"
+        )
+
+        # Name + coloured role badge
         user_col = QVBoxLayout()
-        user_col.setSpacing(2)
+        user_col.setSpacing(1)
+        user_col.setContentsMargins(0, 0, 0, 0)
 
         name_lbl = QLabel(current_session.full_name or current_session.username)
         name_lbl.setStyleSheet("color: #E2E8F0; font-weight: 600; font-size: 12px;")
+        name_lbl.setMaximumWidth(120)
 
-        role_lbl = QLabel(f"@{current_session.role}")
-        role_lbl.setStyleSheet("color: #475569; font-size: 11px;")
+        _role_colors = {
+            "admin": "#F87171", "manager": "#60A5FA",
+            "operator": "#34D399", "viewer": "#94A3B8",
+        }
+        _rc = _role_colors.get(current_session.role or "viewer", "#94A3B8")
+        role_lbl = QLabel((current_session.role or "viewer").capitalize())
+        role_lbl.setStyleSheet(f"color: {_rc}; font-size: 10px; font-weight: 600;")
 
         user_col.addWidget(name_lbl)
         user_col.addWidget(role_lbl)
 
-        logout_btn = QPushButton("⏻")
+        # Logout button — painted arrow icon, turns red on hover
+        logout_btn = QPushButton()
         logout_btn.setToolTip("Logout")
-        logout_btn.setFixedSize(32, 32)
+        logout_btn.setFixedSize(34, 34)
         logout_btn.setCursor(Qt.PointingHandCursor)
+        logout_btn.setIcon(_make_logout_icon(16))
+        logout_btn.setIconSize(QSize(16, 16))
         logout_btn.setStyleSheet("""
             QPushButton {
-                background-color: #1E293B; color: #94A3B8;
-                border: 1px solid #334155; border-radius: 6px; font-size: 16px;
+                background-color: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 8px;
             }
-            QPushButton:hover { background-color: #DC2626; color: white; border-color: #DC2626; }
+            QPushButton:hover {
+                background-color: #DC2626;
+                border-color: #DC2626;
+            }
         """)
         logout_btn.clicked.connect(self._on_logout)
 
+        b_layout.addWidget(avatar)
         b_layout.addLayout(user_col)
         b_layout.addStretch()
         b_layout.addWidget(logout_btn)
@@ -303,7 +414,7 @@ class MainWindow(QMainWindow):
         dashboard = DashboardView()
         self._add_page("dashboard", dashboard, "Dashboard")
 
-        # Other pages are loaded lazily — placeholder shown until first nav
+        # Other pages are loaded lazily - placeholder shown until first nav
         placeholders = [
             ("assets",        "📦 Assets"),
             ("categories",    "🗂️ Asset Categories"),

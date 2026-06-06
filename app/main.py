@@ -87,6 +87,10 @@ def main() -> int:
     # ── Qt App ────────────────────────────────────────────────────────────────
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
+
+    # Set app-wide icon so taskbar shows the Sanchay icon, not the Python logo
+    from app.views.main_window import _make_app_icon
+    app.setWindowIcon(_make_app_icon(64))
     app.setApplicationVersion(config.APP_VERSION)
     app.setOrganizationName(config.ORGANIZATION)
 
