@@ -21,6 +21,28 @@ from app.views.widgets.notification import show_toast
 from loguru import logger
 
 
+def _load_icon_file() -> QIcon:
+    """
+    Load the pre-generated icon file.
+    Windows: sanchay.ico  (multi-size ICO)
+    Linux  : sanchay_256.png  (largest PNG)
+    Falls back to the programmatic icon if the file is missing.
+    """
+    import sys
+    from pathlib import Path
+    icons_dir = Path(__file__).parent.parent / "resources" / "icons"
+    if sys.platform == "win32":
+        ico = icons_dir / "sanchay.ico"
+        if ico.exists():
+            return QIcon(str(ico))
+    else:
+        png = icons_dir / "sanchay_256.png"
+        if png.exists():
+            return QIcon(str(png))
+    # Fallback: draw programmatically
+    return _make_app_icon(64)
+
+
 def _make_app_icon(size: int = 64) -> QIcon:
     """
     Programmatic app icon - blue rounded square with a white package glyph.
@@ -186,7 +208,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{config.APP_NAME} - {config.APP_TAGLINE}")
-        icon = _make_app_icon(64)
+        icon = _load_icon_file()   # .ico on Windows, .png on Linux
         self.setWindowIcon(icon)
         self.setMinimumSize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
         self._nav_buttons: dict[str, SidebarButton] = {}

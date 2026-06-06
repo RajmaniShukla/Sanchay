@@ -89,8 +89,8 @@ def main() -> int:
     app.setApplicationName(config.APP_NAME)
 
     # Set app-wide icon so taskbar shows the Sanchay icon, not the Python logo
-    from app.views.main_window import _make_app_icon
-    app.setWindowIcon(_make_app_icon(64))
+    from app.views.main_window import _load_icon_file
+    app.setWindowIcon(_load_icon_file())
     app.setApplicationVersion(config.APP_VERSION)
     app.setOrganizationName(config.ORGANIZATION)
 
