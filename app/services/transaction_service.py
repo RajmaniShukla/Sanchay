@@ -128,7 +128,7 @@ class TransactionService:
             issue = txn_repo.get_issue_by_id(issue_id)
             if not issue:
                 raise NotFoundError("Issue Record", str(issue_id))
-            if issue.status != IssueStatus.ACTIVE.value:
+            if issue.status not in (IssueStatus.ACTIVE.value, IssueStatus.OVERDUE.value):
                 raise NoActiveIssueError(issue.asset_name)
 
             # ── Create return record ───────────────────────────────────────────
@@ -192,6 +192,11 @@ class TransactionService:
         with get_db() as db:
             repo = TransactionRepository(db)
             return repo.get_issues_for_person(person_id, status=IssueStatus.ACTIVE.value)
+
+    def get_all_returns(self, **kwargs) -> tuple:
+        with get_db() as db:
+            repo = TransactionRepository(db)
+            return repo.get_all_returns(**kwargs)
 
     def get_stats(self, org_id: Optional[int] = None) -> dict:
         with get_db() as db:

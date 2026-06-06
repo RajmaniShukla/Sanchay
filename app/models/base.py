@@ -51,11 +51,22 @@ class BaseModel(Base, TimestampMixin, SoftDeleteMixin):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
     def to_dict(self) -> dict:
-        """Convert model to dictionary (excludes relationships)."""
-        return {
-            col.key: getattr(self, col.key)
-            for col in self.__table__.columns
-        }
+        """
+        Convert model to a JSON-safe dictionary (excludes relationships).
+        datetime / date / Decimal values are serialised to safe Python types.
+        """
+        from datetime import datetime, date
+        from decimal import Decimal
+        result = {}
+        for col in self.__table__.columns:
+            val = getattr(self, col.key)
+            if isinstance(val, (datetime, date)):
+                result[col.key] = val.isoformat()
+            elif isinstance(val, Decimal):
+                result[col.key] = float(val)
+            else:
+                result[col.key] = val
+        return result
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} id={self.id}>"

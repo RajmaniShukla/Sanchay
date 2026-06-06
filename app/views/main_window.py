@@ -367,17 +367,89 @@ class MainWindow(QMainWindow):
         self.page_title_lbl.setText(page_titles.get(key, key.capitalize()))
 
     def _lazy_load_page(self, key: str) -> None:
-        """Load real page implementations on first visit."""
-        # Pages are currently placeholders — replace with real views here
-        # as each phase is implemented. Example:
-        #
-        # if key == "assets" and isinstance(self._pages.get(key), QWidget):
-        #     from app.views.assets.asset_list_view import AssetListView
-        #     real_page = AssetListView()
-        #     old = self._pages[key]
-        #     self.stack.removeWidget(old)
-        #     self._add_page(key, real_page, "Assets")
-        pass
+        """
+        Lazy-load real page views on first visit.
+        Once loaded, the placeholder is replaced and never recreated.
+        """
+        loaders = {
+            "organizations": self._load_org_view,
+            "departments":   self._load_dept_view,
+            "persons":       self._load_person_view,
+            "assets":        self._load_asset_view,
+            "categories":    self._load_category_view,
+            "issue":         self._load_issue_view,
+            "return":        self._load_return_view,
+            "transactions":  self._load_transaction_view,
+            "reports":       self._load_report_view,
+        }
+        loader = loaders.get(key)
+        if loader:
+            loader()
+
+    def _replace_placeholder(self, key: str, real_widget) -> None:
+        """Swap a placeholder page with the real widget."""
+        old = self._pages.get(key)
+        if old is real_widget:
+            return  # Already loaded
+        if old:
+            self.stack.removeWidget(old)
+            old.deleteLater()
+        self._pages[key] = real_widget
+        self.stack.addWidget(real_widget)
+
+    def _load_org_view(self) -> None:
+        existing = self._pages.get("organizations")
+        from app.views.organization.org_list_view import OrgListView
+        if not isinstance(existing, OrgListView):
+            self._replace_placeholder("organizations", OrgListView())
+
+    def _load_dept_view(self) -> None:
+        existing = self._pages.get("departments")
+        from app.views.organization.dept_list_view import DeptListView
+        if not isinstance(existing, DeptListView):
+            self._replace_placeholder("departments", DeptListView())
+
+    def _load_person_view(self) -> None:
+        existing = self._pages.get("persons")
+        from app.views.employees.person_list_view import PersonListView
+        if not isinstance(existing, PersonListView):
+            self._replace_placeholder("persons", PersonListView())
+
+    def _load_asset_view(self) -> None:
+        existing = self._pages.get("assets")
+        from app.views.assets.asset_list_view import AssetListView
+        if not isinstance(existing, AssetListView):
+            self._replace_placeholder("assets", AssetListView())
+
+    def _load_category_view(self) -> None:
+        existing = self._pages.get("categories")
+        from app.views.assets.category_list_view import CategoryListView
+        if not isinstance(existing, CategoryListView):
+            self._replace_placeholder("categories", CategoryListView())
+
+    def _load_issue_view(self) -> None:
+        existing = self._pages.get("issue")
+        from app.views.transactions.issue_view import IssueView
+        if not isinstance(existing, IssueView):
+            self._replace_placeholder("issue", IssueView())
+
+    def _load_return_view(self) -> None:
+        existing = self._pages.get("return")
+        from app.views.transactions.return_view import ReturnView
+        if not isinstance(existing, ReturnView):
+            self._replace_placeholder("return", ReturnView())
+
+    def _load_transaction_view(self) -> None:
+        existing = self._pages.get("transactions")
+        from app.views.transactions.transaction_list_view import TransactionListView
+        if not isinstance(existing, TransactionListView):
+            self._replace_placeholder("transactions", TransactionListView())
+
+    def _load_report_view(self) -> None:
+        existing = self._pages.get("reports")
+        from app.views.reports.report_view import ReportView
+        if not isinstance(existing, ReportView):
+            self._replace_placeholder("reports", ReportView())
 
     # ── Signals & Events ──────────────────────────────────────────────────────
 

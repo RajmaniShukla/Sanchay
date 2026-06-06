@@ -20,6 +20,22 @@ from app.constants import AssetStatus, AssetCondition, AuditAction
 
 class AssetCategoryService:
 
+    @staticmethod
+    def _audit(db, action, module: str, record_id: int,
+               old_values: Optional[dict] = None, description: str = "") -> None:
+        import json
+        log = AuditLog(
+            user_id=current_session.user_id,
+            action=action.value if hasattr(action, "value") else action,
+            module=module,
+            table_name=module,
+            record_id=record_id,
+            old_values_json=json.dumps(old_values) if old_values else None,
+            description=description,
+        )
+        db.add(log)
+        db.flush()
+
     def get_all(self, org_id: Optional[int] = None) -> list[AssetCategory]:
         with get_db() as db:
             repo = AssetCategoryRepository(db)

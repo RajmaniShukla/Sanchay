@@ -6,8 +6,8 @@ Data access for AssetIssue and AssetReturn records.
 
 from typing import Optional
 from datetime import date
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 
 from app.models.transaction import AssetIssue, AssetReturn
 from app.models.asset import Asset
@@ -29,7 +29,17 @@ class TransactionRepository:
         return issue
 
     def get_issue_by_id(self, issue_id: int) -> Optional[AssetIssue]:
-        return self.db.query(AssetIssue).filter(AssetIssue.id == issue_id).first()
+        return (
+            self.db.query(AssetIssue)
+            .options(
+                joinedload(AssetIssue.asset),
+                joinedload(AssetIssue.person),
+                joinedload(AssetIssue.issued_by),
+                joinedload(AssetIssue.returns),
+            )
+            .filter(AssetIssue.id == issue_id)
+            .first()
+        )
 
     def get_active_issue_for_asset(self, asset_id: int) -> Optional[AssetIssue]:
         """Returns the active (unresolved) issue for an asset, if any."""
@@ -42,18 +52,31 @@ class TransactionRepository:
             .first()
         )
 
+    def _with_joins(self, q):
+        """Apply eager-loads for issue queries so relationships are safe outside session."""
+        return q.options(
+            joinedload(AssetIssue.asset),
+            joinedload(AssetIssue.person),
+            joinedload(AssetIssue.issued_by),
+            joinedload(AssetIssue.returns),
+        )
+
     def get_issues_for_person(
         self, person_id: int, status: Optional[str] = None
     ) -> list[AssetIssue]:
-        q = self.db.query(AssetIssue).filter(AssetIssue.person_id == person_id)
+        q = self._with_joins(
+            self.db.query(AssetIssue).filter(AssetIssue.person_id == person_id)
+        )
         if status:
             q = q.filter(AssetIssue.status == status)
         return q.order_by(AssetIssue.issue_date.desc()).all()
 
     def get_issues_for_asset(self, asset_id: int) -> list[AssetIssue]:
         return (
-            self.db.query(AssetIssue)
-            .filter(AssetIssue.asset_id == asset_id)
+            self._with_joins(
+                self.db.query(AssetIssue)
+                .filter(AssetIssue.asset_id == asset_id)
+            )
             .order_by(AssetIssue.issue_date.desc())
             .all()
         )
@@ -67,7 +90,7 @@ class TransactionRepository:
         limit: int = 200,
         offset: int = 0,
     ) -> tuple[list[AssetIssue], int]:
-        q = self.db.query(AssetIssue)
+        q = self._with_joins(self.db.query(AssetIssue))
         if org_id:
             q = q.filter(AssetIssue.org_id == org_id)
         if status:
@@ -82,9 +105,11 @@ class TransactionRepository:
 
     def get_overdue_issues(self, org_id: Optional[int] = None) -> list[AssetIssue]:
         """Returns active issues where expected_return_date < today."""
-        q = self.db.query(AssetIssue).filter(
-            AssetIssue.status == "active",
-            AssetIssue.expected_return_date < date.today(),
+        q = self._with_joins(
+            self.db.query(AssetIssue).filter(
+                AssetIssue.status == "active",
+                AssetIssue.expected_return_date < date.today(),
+            )
         )
         if org_id:
             q = q.filter(AssetIssue.org_id == org_id)
