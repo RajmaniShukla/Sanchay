@@ -277,12 +277,12 @@ class DashboardView(QScrollArea):
         qa_grid.setSpacing(12)
 
         actions = [
-            ("📦", "Add New Asset",       "Register a new asset",          "assets.new"),
-            ("📤", "Issue Asset",          "Assign asset to a person",      "transactions.issue"),
-            ("📥", "Return Asset",         "Record an asset return",        "transactions.return"),
-            ("👤", "Add Person",           "Register employee/student",     "persons.new"),
+            ("📦", "Add New Asset",       "Register a new asset",          "assets"),
+            ("📤", "Issue Asset",          "Assign asset to a person",      "issue"),
+            ("📥", "Return Asset",         "Record an asset return",        "return"),
+            ("👤", "Add Person",           "Register employee/student",     "persons"),
             ("📊", "View Reports",         "Generate and export reports",   "reports"),
-            ("🔄", "Backup Database",      "Create a database backup",      "settings.backup"),
+            ("🔄", "Backup Database",      "Create a database backup",      "backup"),
         ]
 
         for i, (icon, title, sub, key) in enumerate(actions):
