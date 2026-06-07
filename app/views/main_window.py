@@ -27,10 +27,11 @@ def _load_icon_file() -> QIcon:
     Windows: sanchay.ico  (multi-size ICO)
     Linux  : sanchay_256.png  (largest PNG)
     Falls back to the programmatic icon if the file is missing.
+    Uses config.ICONS_DIR so it works in both source and PyInstaller frozen builds.
     """
     import sys
-    from pathlib import Path
-    icons_dir = Path(__file__).parent.parent / "resources" / "icons"
+    from app.config import config
+    icons_dir = config.ICONS_DIR
     if sys.platform == "win32":
         ico = icons_dir / "sanchay.ico"
         if ico.exists():

@@ -41,6 +41,7 @@ desktop.ini
 
 # PyInstaller
 *.spec
+!sanchay.spec
 dist/
 build/
 

@@ -75,13 +75,26 @@
 - [x] 54 exception path tests (every custom exception triggered + message verified)
 - [x] **GRAND TOTAL: 643 tests, 0 failures across 11 suites**
 
-## Phase 8 — Packaging 🔜 Next
-- [ ] PyInstaller spec file (single-file .exe for Windows)
+## Phase 8 — Packaging 🔄 In Progress
+- [x] Pre-phase 8 audit (2026-06-07)
+  - [x] Fixed config.py: BUNDLE_ROOT split for onedir/onefile/source modes
+  - [x] Fixed main_window.py: _load_icon_file() uses config.ICONS_DIR (frozen-safe)
+  - [x] Fixed main.py: sys.path.insert guarded for frozen builds
+  - [x] Installed PyInstaller 6.20.0 (supports Python 3.14)
+- [x] sanchay.spec — onedir spec file written
+- [x] Windows onedir build: dist\Sanchay\ (135.8 MB, Sanchay.exe launches ✅)
+- [x] build_exe.bat — convenience build script
+- [x] Phase 8 audit (2026-06-07) — reportlab + openpyxl lazy-import fix, logger sys.stderr guard
+- [x] NSIS installer script (installer\sanchay_installer.nsi)
+  - Start Menu + Desktop shortcuts
+  - Add/Remove Programs registration
+  - Uninstaller with optional user-data keep/delete prompt
+  - installer\build_installer.bat convenience script
+- [ ] Build final SanchaySetup-1.0.0.exe (needs NSIS installed)
+- [x] User manual PDF (docs/Sanchay_User_Manual.pdf) — 17 sections, generated via generate_manual.py
+- [ ] Auto-update check (GitHub releases)
 - [ ] Linux AppImage build
 - [ ] macOS .app bundle
-- [ ] Installer script (NSIS for Windows)
-- [ ] Auto-update check (GitHub releases)
-- [ ] User manual (PDF)
 - [ ] Release checklist
 
 ---

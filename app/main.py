@@ -14,9 +14,11 @@ Run with:
 import sys
 from pathlib import Path
 
-# ── Ensure project root is on sys.path ────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# ── Ensure project root is on sys.path (source-mode only) ───────────────────
+# In a PyInstaller frozen build, imports are handled by the bootloader.
+if not getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(__file__).parent.parent
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from PySide6.QtWidgets import QApplication, QSplashScreen, QMessageBox
 from PySide6.QtGui import QPixmap, QColor

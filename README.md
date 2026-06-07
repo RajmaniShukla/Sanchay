@@ -258,7 +258,7 @@ Coverage includes:
 | 6 | Settings + User Mgmt + Backup UI | ✅ Complete |
 | 7 | Deep Testing + Security Audit + Polish | ✅ Complete |
 | 7.5 | Idiot-proof + Hardening + 643 tests | ✅ Complete |
-| **8** | **PyInstaller Packaging (.exe / AppImage)** | 🔜 Next |
+| **8** | **PyInstaller Packaging (.exe / AppImage)** | 🔄 In Progress |
 
 ---
 

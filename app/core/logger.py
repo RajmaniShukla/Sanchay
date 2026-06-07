@@ -13,27 +13,29 @@ from app.config import config
 def setup_logging() -> None:
     """
     Configure application-wide logging with loguru.
-    
+
     - Console: human-readable, INFO level
-    - File: JSON-structured, DEBUG level, rotating
+      (skipped in PyInstaller windowed builds where sys.stderr is None)
+    - File: structured, DEBUG level, rotating
     """
     # Remove default handler
     logger.remove()
 
-    # ── Console handler ───────────────────────────────────────────────────────
-    logger.add(
-        sys.stderr,
-        level=config.LOG_LEVEL,
-        format=(
-            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{line}</cyan> — "
-            "<level>{message}</level>"
-        ),
-        colorize=True,
-    )
+    # Console handler — sys.stderr is None in windowed PyInstaller builds
+    if sys.stderr is not None:
+        logger.add(
+            sys.stderr,
+            level=config.LOG_LEVEL,
+            format=(
+                "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+                "<level>{level: <8}</level> | "
+                "<cyan>{name}</cyan>:<cyan>{line}</cyan> — "
+                "<level>{message}</level>"
+            ),
+            colorize=True,
+        )
 
-    # ── File handler ──────────────────────────────────────────────────────────
+    # File handler — always active; create logs dir if needed
     config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
     logger.add(
         str(config.LOG_FILE),

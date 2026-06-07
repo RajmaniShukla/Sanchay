@@ -1,0 +1,12 @@
+SANCHAY — INVENTORY & ASSET MANAGEMENT SYSTEM
+Proprietary Software License
+
+Copyright (c) 2026 Sanchay Systems. All rights reserved.
+
+This software and its source code are proprietary and confidential.
+Unauthorized copying, distribution, modification, or use of this
+software, via any medium, is strictly prohibited.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY.
