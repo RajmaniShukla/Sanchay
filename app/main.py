@@ -122,7 +122,19 @@ def main() -> int:
 
     logger.info(f"Database ready at: {config.DB_PATH}")
 
-    # ── First Run ─────────────────────────────────────────────────────────────
+    # ── First Run / No Users ──────────────────────────────────────────────────
+    # Show the setup wizard if:
+    #   a) DB didn't exist before this launch (true first run), OR
+    #   b) DB exists but contains no users (wizard was cancelled on a prior run)
+    if not is_first_run:
+        try:
+            from app.services.auth_service import AuthService
+            if not AuthService().has_any_users():
+                is_first_run = True
+                logger.info("DB exists but no users found — showing setup wizard.")
+        except Exception as e:
+            logger.warning(f"Could not check for existing users: {e}")
+
     if is_first_run:
         logger.info("First run detected — showing setup wizard.")
         completed = run_first_time_setup(app)

@@ -19,12 +19,16 @@ from dotenv import load_dotenv
 #              next to the exe so backups/exports/logs survive across runs.
 # ---------------------------------------------------------------------------
 if getattr(sys, "frozen", False):
-    # User-mutable data (DB, logs, backups, exports) -> always next to the exe
-    APP_ROOT = Path(sys.executable).parent
+    # User-mutable data (DB, logs, backups, exports) -> %LOCALAPPDATA%\Sanchay
+    # This avoids PermissionError when the app is installed in Program Files,
+    # which is not writable by non-admin users.
+    import os as _os
+    _localappdata = Path(_os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    APP_ROOT = _localappdata / "Sanchay"
     # Read-only bundled resources (icons, styles):
-    #   onefile: extracted to sys._MEIPASS temp dir
-    #   onedir : same folder as the exe (no _MEIPASS)
-    BUNDLE_ROOT = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else APP_ROOT
+    #   onedir (PyInstaller 6+): sys._MEIPASS points to _internal\
+    #   fallback: next to the exe
+    BUNDLE_ROOT = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else Path(sys.executable).parent
 else:
     APP_ROOT = Path(__file__).parent.parent
     BUNDLE_ROOT = APP_ROOT

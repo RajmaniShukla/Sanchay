@@ -25,13 +25,10 @@ class AppSignals(QObject):
     """
 
     # ── Authentication ────────────────────────────────────────────────────────
-    login_success   = Signal(int, str, str)   # user_id, username, role
     logout_request  = Signal()
-    session_expired = Signal()
 
     # ── Navigation ────────────────────────────────────────────────────────────
     navigate_to     = Signal(str)             # page_key: str
-    page_changed    = Signal(str)             # current page key
 
     # ── Organization ──────────────────────────────────────────────────────────
     org_created     = Signal(int)             # org_id
@@ -64,9 +61,6 @@ class AppSignals(QObject):
     show_notification = Signal(str, str, str) # title, message, type (info/success/warning/error)
     status_message    = Signal(str)           # short status bar message
 
-    # ── Settings ─────────────────────────────────────────────────────────────
-    theme_changed     = Signal(str)           # theme name
-    settings_saved    = Signal()
 
 
 # ── Singleton instance ────────────────────────────────────────────────────────

@@ -119,16 +119,13 @@ SectionEnd
 Section "Uninstall"
 
     ; ---- Ask about user data --------------------------------------------------
+    ; User data lives in %LOCALAPPDATA%\Sanchay (writable, outside Program Files)
     MessageBox MB_YESNO|MB_ICONQUESTION \
-        "Do you want to keep your data (database, backups, exports, logs)?$\r$\n$\r$\nClick Yes to keep them.$\r$\nClick No to delete everything." \
+        "Do you want to keep your data (database, backups, exports, logs)?$\r$\n$\r$\nData is stored in: $LOCALAPPDATA\Sanchay$\r$\n$\r$\nClick Yes to keep it.$\r$\nClick No to delete everything." \
         IDYES keep_data
 
-    ; Delete user data if they chose No
-    RMDir /r "$INSTDIR\data"
-    RMDir /r "$INSTDIR\logs"
-    RMDir /r "$INSTDIR\backups"
-    RMDir /r "$INSTDIR\exports"
-    RMDir /r "$INSTDIR\app"
+    ; Delete user data from AppData\Local\Sanchay
+    RMDir /r "$LOCALAPPDATA\Sanchay"
 
     keep_data:
 

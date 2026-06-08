@@ -16,7 +16,6 @@ from app.core.security import (
     hash_password, verify_password, current_session,
     require_authenticated, require_role,
 )
-from app.core.validators import validate_email, validate_username, sanitise_str, require_str
 from app.core.exceptions import (
     AuthenticationError, AccountInactiveError, ValidationError,
     DuplicateEntryError, NotFoundError, PermissionDeniedError,
@@ -328,6 +327,14 @@ class AuthService:
                     )
                     repo.create(role)
             logger.info("Default roles seeded.")
+
+    def has_any_users(self) -> bool:
+        """Return True if at least one user account exists in the database."""
+        try:
+            with get_db() as db:
+                return db.query(User).limit(1).count() > 0
+        except Exception:
+            return False
 
     def get_all_users(self) -> list[User]:
         """Return all active users."""

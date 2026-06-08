@@ -45,9 +45,16 @@ desktop.ini
 dist/
 build/
 
+# Installer binaries (distribute via GitHub Releases, not the repo)
+installer/*.exe
+installer/*.log
+
 # Coverage
 .coverage
 htmlcov/
+
+# Test cache
+.pytest_cache/
 
 # Uploaded files
 app/resources/uploads/
