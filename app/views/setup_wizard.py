@@ -9,7 +9,7 @@ Shown when no database exists. Guides the user through:
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFrame, QComboBox, QMessageBox, QStackedWidget,
-    QFormLayout,
+    QFormLayout, QWidget,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
